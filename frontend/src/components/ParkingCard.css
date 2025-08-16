@@ -1,0 +1,65 @@
+.parking-card {
+  background-color: var(--white-color);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  transition: transform 0.3s ease;
+}
+
+.parking-card:hover {
+  transform: translateY(-5px);
+}
+
+.parking-card h2 {
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+  text-align: center;
+  border-bottom: 2px solid var(--light-color);
+  padding-bottom: 0.5rem;
+}
+
+.stat-container {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 1.5rem;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: var(--gray-color);
+  font-size: 0.9rem;
+}
+
+.available {
+  color: var(--success-color);
+}
+
+.occupied {
+  color: var(--danger-color);
+}
+
+.more-info-btn {
+  display: block;
+  width: 100%;
+  padding: 0.8rem;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+}
+
+.more-info-btn:hover {
+  background-color: var(--secondary-color);
+} 

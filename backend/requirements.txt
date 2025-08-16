@@ -1,11 +1,7 @@
 setuptools>=70.0.0
 wheel>=0.41.0
-
 Flask>=3.0.0
 flask-cors==4.0.0
-
-opencv-python-headless==4.8.1.78
-numpy==2.3.2
-Pillow==9.5.0
-
 gunicorn==21.2.0
+opencv-python-headless==4.8.1.78
+numpy==1.26.4

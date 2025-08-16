@@ -1,8 +1,8 @@
 # app.py
 """
-Production-ready Flask app for ParkingVision.
-Works with Flask 2.x and 3.x, and Gunicorn.
-Starts video processing threads safely (per process) with a fallback.
+Robust Flask app for ParkingVision.
+Registers startup handler dynamically (compatible with Flask 2.x and 3.x)
+so importing the module never raises AttributeError.
 """
 from flask import Flask, jsonify, render_template, Response, request
 from flask_cors import CORS
@@ -14,11 +14,11 @@ import cv2
 import numpy as np
 import pickle
 
-# Import your local ParkingMonitor (keeps video paths / pos files)
+# local import (ensure core/parking_monitor.py exists)
 from core.parking_monitor import ParkingMonitor
 
 # -------------------------
-# App and folder settings
+# App and folders
 # -------------------------
 BASE_DIR = Path(__file__).parent.resolve()
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -27,17 +27,15 @@ STATIC_DIR = BASE_DIR / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR), template_folder=str(TEMPLATES_DIR))
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# Toggle video processing from environment (useful for testing)
 ENABLE_VIDEO = os.getenv("ENABLE_VIDEO", "true").lower() in ("1", "true", "yes")
 
 # -------------------------
-# Shared runtime state
+# Shared state
 # -------------------------
 parking_data = {
     "lot1": {"total": 0, "available": 0, "occupied": 0, "history": []},
     "lot2": {"total": 0, "available": 0, "occupied": 0, "history": []},
 }
-
 frames = {"1": b"", "2": b""}
 frame_locks = {"1": threading.Lock(), "2": threading.Lock()}
 
@@ -46,7 +44,7 @@ processing_started = False
 processing_lock = threading.Lock()
 
 # -------------------------
-# Video processing class
+# Video processing
 # -------------------------
 class VideoProcessor:
     def __init__(self, video_idx, video_path, pos_file, monitor):
@@ -75,10 +73,9 @@ class VideoProcessor:
             if self.video_path.exists():
                 self.cap = cv2.VideoCapture(str(self.video_path))
                 if self.cap.isOpened():
-                    fps = self.cap.get(cv2.CAP_PROP_FPS)
-                    self.fps = fps if fps and fps > 0 else 30.0
+                    fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+                    self.fps = fps if fps > 0 else 30.0
                     self.frame_delay = 1.0 / self.fps
-                    # Reduce capture buffering for lower latency (if supported)
                     try:
                         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     except Exception:
@@ -91,7 +88,7 @@ class VideoProcessor:
                 print(f"Video file not found: {self.video_path}")
 
         except Exception as e:
-            print(f"Error setting up VideoProcessor (lot {self.video_idx + 1}): {e}")
+            print(f"Error during VideoProcessor setup for lot {self.video_idx + 1}: {e}")
             self.cap = None
 
     def _process_frame(self, frame):
@@ -135,7 +132,6 @@ class VideoProcessor:
             try:
                 ok, frame = self.cap.read()
                 if not ok:
-                    # loop
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
 
@@ -170,7 +166,7 @@ class VideoProcessor:
                 time.sleep(0.1)
 
 # -------------------------
-# Start / manage processing
+# Setup threads exactly once
 # -------------------------
 def setup_video_processing():
     global processing_started
@@ -183,29 +179,39 @@ def setup_video_processing():
             return
         monitor = ParkingMonitor()
         for i in range(min(2, len(monitor.video_paths))):
-            vp = VideoProcessor(i, monitor.video_paths[i], monitor.pos_files[i], monitor)
-            video_processors.append(vp)
+            p = VideoProcessor(i, monitor.video_paths[i], monitor.pos_files[i], monitor)
+            video_processors.append(p)
 
-        for p in video_processors:
-            t = threading.Thread(target=p.run, daemon=True)
+        for proc in video_processors:
+            t = threading.Thread(target=proc.run, daemon=True)
             t.start()
 
         processing_started = True
         print(f"Started {len(video_processors)} video thread(s).")
 
-# Try to register before_serving (Flask 3.x & 2.x compatible)
-if hasattr(app, "before_serving"):
-    @app.before_serving
-    def _before_serving_start():
+# Register start handler dynamically (no decorators that might not exist)
+def _start_background():
+    try:
         setup_video_processing()
+    except Exception as e:
+        print(f"Error starting background processing: {e}")
 
-# Fallback: ensure started from routes (if before_serving is not called by the server)
+if hasattr(app, "before_serving"):
+    # Flask 3.x (and 2.2+): before_serving exists
+    app.before_serving(_start_background)
+elif hasattr(app, "before_first_request"):
+    # older Flask versions
+    app.before_first_request(_start_background)
+else:
+    # No safe hook available — we'll start lazily on first request
+    print("No before_serving/before_first_request hook found — will start on first request.")
+
 def ensure_processing_started():
     if not processing_started:
         setup_video_processing()
 
 # -------------------------
-# Helper: streaming generator
+# Streaming generator
 # -------------------------
 def generate_frames(lot_id: str):
     while True:
@@ -214,8 +220,8 @@ def generate_frames(lot_id: str):
                 data = frames[lot_id]
                 if not data:
                     blank = np.zeros((480, 640, 3), np.uint8)
-                    text = f"Loading Lot {lot_id}..."
-                    cv2.putText(blank, text, (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    txt = f"Loading Lot {lot_id}..."
+                    cv2.putText(blank, txt, (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
                     _, buf = cv2.imencode(".jpg", blank)
                     data = buf.tobytes()
 
@@ -292,10 +298,9 @@ def video_stream():
     return Response(generate_frames(lot), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 # -------------------------
-# Local debug run
+# Local run
 # -------------------------
 if __name__ == "__main__":
-    # When running locally, this will start threads as well (if ENABLE_VIDEO true)
     if ENABLE_VIDEO:
         setup_video_processing()
         time.sleep(1)

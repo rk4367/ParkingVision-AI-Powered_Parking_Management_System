@@ -1,15 +1,11 @@
-# Core build tools
 setuptools>=70.0.0
 wheel>=0.41.0
 
-# Web framework & CORS
 Flask>=3.0.0
 flask-cors==4.0.0
 
-# Computer vision & image processing
 opencv-python-headless==4.8.1.78
-numpy==1.24.3
+numpy==2.3.2
 Pillow==9.5.0
 
-# Production WSGI server
 gunicorn==21.2.0
